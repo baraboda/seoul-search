@@ -1,1 +1,490 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>서울시 현황 탐색</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/instantsearch.css@8/themes/satellite-min.css">
+    <script src="https://cdn.jsdelivr.net/npm/algoliasearch@4/dist/algoliasearch-lite.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/instantsearch.js@4"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #7c3aed;
+            --danger-color: #dc2626;
+            --success-color: #16a34a;
+            --warning-color: #f59e0b;
+            --text-size: 16px;
+        }
+        
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-size: var(--text-size);
+            line-height: 1.6;
+        }
+        
+        /* 헤더 */
+        .header {
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+        
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        h1 {
+            font-size: 2.2em;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+        }
+        
+        /* 폰트 크기 조절 */
+        .font-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .font-controls span {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .font-btn {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #ddd;
+            background: white;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .font-btn:hover {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+            transform: scale(1.1);
+        }
+        
+        /* 컨테이너 */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        /* 통계 */
+        .stats-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .ais-Stats {
+            font-size: 1.1em;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        /* 검색박스 */
+        .search-wrapper {
+            background: white;
+            border-radius: 60px;
+            padding: 10px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            margin-bottom: 30px;
+        }
+        
+        .ais-SearchBox-input {
+            border: none;
+            padding: 20px 30px;
+            font-size: 1.1em;
+            width: 100%;
+            outline: none;
+            background: transparent;
+        }
+        
+        .ais-SearchBox-submit,
+        .ais-SearchBox-reset {
+            background: transparent;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+        }
+        
+        /* 카드 */
+        .ais-Hits-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+            gap: 25px;
+            padding: 0;
+            list-style: none;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+        
+        .card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        }
+        
+        .card-header {
+            padding: 20px 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .card-meta {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .card-number {
+            background: rgba(255,255,255,0.25);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+        
+        .card-category {
+            background: rgba(255,255,255,0.2);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+        
+        .card-location {
+            background: rgba(255,255,255,0.15);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+        
+        .card-title {
+            font-size: calc(var(--text-size) * 1.3);
+            font-weight: 700;
+            margin: 0;
+            line-height: 1.3;
+        }
+        
+        .card-body {
+            padding: 25px;
+        }
+        
+        .card-section {
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .card-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .section-label {
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: calc(var(--text-size) * 0.95);
+        }
+        
+        .section-label::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 2px;
+        }
+        
+        .section-content {
+            color: #444;
+            line-height: 1.7;
+            padding-left: 12px;
+            font-size: var(--text-size);
+        }
+        
+        /* 문제점 강조 */
+        .problem-section {
+            background: #fef2f2;
+            border-left: 4px solid var(--danger-color);
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .problem-section .section-label {
+            color: var(--danger-color);
+        }
+        
+        /* 제안 강조 */
+        .suggestion-section {
+            background: #f0f9ff;
+            border-left: 4px solid var(--primary-color);
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        /* 페이지네이션 */
+        .ais-Pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 40px 0;
+            padding: 20px;
+        }
+        
+        .ais-Pagination-item {
+            list-style: none;
+        }
+        
+        .ais-Pagination-link {
+            display: block;
+            padding: 12px 18px;
+            background: white;
+            border-radius: 10px;
+            text-decoration: none;
+            color: #333;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .ais-Pagination-item--selected .ais-Pagination-link {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        /* 반응형 - 모바일 */
+        @media (max-width: 768px) {
+            .ais-Hits-list {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 1.5em;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            /* 모바일에서 카드 패딩 대폭 축소 */
+            .card-body {
+                padding: 15px;
+            }
+            
+            .card-header {
+                padding: 15px 18px;
+            }
+            
+            /* 섹션 내용 좌측 패딩 제거 */
+            .section-content {
+                padding-left: 0;
+            }
+            
+            /* 문제점/제안 섹션 패딩 축소 */
+            .problem-section,
+            .suggestion-section {
+                padding: 10px;
+            }
+            
+            .card-section {
+                margin-bottom: 15px;
+                padding-bottom: 15px;
+            }
+        }
+        
+        /* 로딩 애니메이션 */
+        @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+        }
+        
+        .loading {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 1000px 100%;
+            animation: shimmer 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1>🏛️ 서울시 현황 탐색</h1>
+            <div class="font-controls">
+                <span>글자 크기</span>
+                <button class="font-btn" onclick="changeFontSize(-2)">A-</button>
+                <button class="font-btn" onclick="changeFontSize(2)">A+</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="stats-card">
+            <div id="stats"></div>
+        </div>
+        
+        <div class="search-wrapper">
+            <div id="searchbox"></div>
+        </div>
+        
+        <div id="hits"></div>
+        <div id="pagination"></div>
+    </div>
+
+    <script>
+        // 폰트 크기 조절 - 더 세밀한 조절
+        let currentSize = 16;
+        function changeFontSize(delta) {
+            currentSize += delta;
+            if (currentSize < 12) currentSize = 12;
+            if (currentSize > 26) currentSize = 26;
+            document.documentElement.style.setProperty('--text-size', currentSize + 'px');
+            
+            // 변경 사항을 로컬 스토리지에 저장
+            localStorage.setItem('fontSize', currentSize);
+        }
+
+        // 페이지 로드시 저장된 폰트 크기 적용
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedSize = localStorage.getItem('fontSize');
+            if (savedSize) {
+                currentSize = parseInt(savedSize);
+                document.documentElement.style.setProperty('--text-size', currentSize + 'px');
+            }
+        });
+        
+        // Algolia 설정
+        const searchClient = algoliasearch(
+            'X02D3JQ3LS',
+            '66df50144b6ff51f5e49324905c350ae'
+        );
+
+        const search = instantsearch({
+            indexName: 'seoul',
+            searchClient,
+        });
+
+        search.addWidgets([
+            instantsearch.widgets.searchBox({
+                container: '#searchbox',
+                placeholder: '검색어를 입력하세요 (예: 강서구, 교통, 복지, 연희동)',
+            }),
+            
+            instantsearch.widgets.stats({
+                container: '#stats',
+                templates: {
+                    text: `
+                        {{#hasNoResults}}검색 결과가 없습니다{{/hasNoResults}}
+                        {{#hasOneResult}}1개 항목 발견{{/hasOneResult}}
+                        {{#hasManyResults}}총 <strong>{{#helpers.formatNumber}}{{nbHits}}{{/helpers.formatNumber}}</strong>개 현황카드 (검색시간: {{processingTimeMS}}ms){{/hasManyResults}}
+                    `,
+                },
+            }),
+            
+            instantsearch.widgets.hits({
+                container: '#hits',
+                templates: {
+                    item(hit) {
+                        return `
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="card-meta">
+                                        <span class="card-number">${hit.카드번호 || '-'}</span>
+                                        <span class="card-category">${hit.분류 || '-'}</span>
+                                        <span class="card-location">📍 ${hit.지역 || '-'}</span>
+                                    </div>
+                                    <h3 class="card-title">${hit.현안제목 || '제목 없음'}</h3>
+                                </div>
+                                
+                                <div class="card-body">
+                                    ${hit.문제점 ? `
+                                    <div class="problem-section">
+                                        <div class="section-label">🚨 문제점</div>
+                                        <div class="section-content">${hit.문제점}</div>
+                                    </div>
+                                    ` : ''}
+                                    
+                                    ${hit.제안내용 ? `
+                                    <div class="suggestion-section">
+                                        <div class="section-label">💡 제안내용</div>
+                                        <div class="section-content">${hit.제안내용}</div>
+                                    </div>
+                                    ` : ''}
+                                    
+                                    ${hit.답변사항 ? `
+                                    <div class="card-section">
+                                        <div class="section-label">📢 답변사항</div>
+                                        <div class="section-content">${hit.답변사항}</div>
+                                    </div>
+                                    ` : ''}
+                                    
+                                    ${hit['객관적 분석'] || hit.객관적분석 ? `
+                                    <div class="card-section">
+                                        <div class="section-label">📊 객관적 분석</div>
+                                        <div class="section-content">${hit['객관적 분석'] || hit.객관적분석}</div>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `;
+                    },
+                    empty: `
+                        <div style="text-align: center; padding: 60px; color: white;">
+                            <h2>검색 결과가 없습니다</h2>
+                            <p style="margin-top: 10px;">다른 검색어를 시도해보세요</p>
+                        </div>
+                    `,
+                },
+            }),
+            
+            instantsearch.widgets.pagination({
+                container: '#pagination',
+            }),
+        ]);
+
+        search.start();
+    </script>
+</body>
+</html>
 
