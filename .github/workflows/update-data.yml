@@ -1,0 +1,94 @@
+name: Update Algolia from Google Sheets
+on:
+  schedule:
+    - cron: '0 0,12 * * *'  # 별 5개로 수정
+  workflow_dispatch:
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Update Algolia
+        env:
+          ALGOLIA_APP_ID: "${{ secrets.ALGOLIA_APP_ID }}"
+          ALGOLIA_ADMIN_KEY: "${{ secrets.ALGOLIA_ADMIN_KEY }}"
+        run: |
+          curl -L "https://docs.google.com/spreadsheets/d/194sWZtDbuY8dcLM9oMOnZA0LGs-J31FLI8wFhtXjCC4/export?format=csv&gid=0" > data.csv
+          
+          npm init -y
+          npm install algoliasearch@4 csv-parser
+          
+          cat > update-algolia.js << 'EOF'
+          const algoliasearch = require('algoliasearch');
+          const csv = require('csv-parser');
+          const fs = require('fs');
+          
+          async function updateAlgolia() {
+            const client = algoliasearch(
+              process.env.ALGOLIA_APP_ID,
+              process.env.ALGOLIA_ADMIN_KEY
+            );
+            const index = client.initIndex('seoul');  // ← 여기만 변경
+            
+            const records = [];
+            
+            await new Promise((resolve, reject) => {
+              fs.createReadStream('data.csv')
+                .pipe(csv())
+                .on('data', (row) => {
+                  if (row['카드번호']) {
+                    row.objectID = row['카드번호'] + '_' + (row['파일명'] || records.length);
+                    records.push(row);
+                  }
+                })
+                .on('end', resolve)
+                .on('error', reject);
+            });
+            
+            console.log('파싱된 레코드 수:', records.length);
+            if (records.length > 0) {
+              console.log('첫 번째 레코드:', JSON.stringify(records[0], null, 2));
+            }
+            
+            if (records.length > 0) {
+              await index.clearObjects();
+              console.log('기존 데이터 삭제 완료');
+              
+              const batchSize = 100;
+              let totalUploaded = 0;
+              
+              for (let i = 0; i < records.length; i += batchSize) {
+                const batch = records.slice(i, i + batchSize);
+                try {
+                  await index.saveObjects(batch);
+                  totalUploaded += batch.length;
+                  console.log(`배치 ${Math.floor(i/batchSize) + 1}: ${batch.length}개 업로드 (총 ${totalUploaded}/${records.length})`);
+                } catch (error) {
+                  console.error(`배치 ${Math.floor(i/batchSize) + 1} 실패:`, error);
+                }
+              }
+              
+              console.log(`✅ Algolia 업데이트 완료: 총 ${totalUploaded}개`);
+            } else {
+              console.error('파싱된 레코드가 없습니다');
+              process.exit(1);
+            }
+          }
+          
+          updateAlgolia().catch(error => {
+            console.error('실행 실패:', error);
+            process.exit(1);
+          });
+          EOF
+          
+          node update-algolia.js
+
+
+
