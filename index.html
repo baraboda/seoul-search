@@ -86,6 +86,73 @@
             transform: scale(1.1);
         }
         
+        /* 전체 읽기 컨트롤 */
+        .global-tts-controls {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .global-tts-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1.1em;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .global-tts-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .global-tts-btn.playing {
+            background: linear-gradient(135deg, #f59e0b 0%, #dc2626 100%);
+        }
+        
+        .global-tts-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .tts-status {
+            flex: 1;
+            color: #666;
+            font-size: 0.95em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .tts-progress {
+            background: #e0e0e0;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            flex: 1;
+            max-width: 300px;
+        }
+        
+        .tts-progress-bar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100%;
+            width: 0;
+            transition: width 0.3s;
+        }
+        
         /* 컨테이너 */
         .container {
             max-width: 1400px;
@@ -156,6 +223,11 @@
         .card:hover {
             transform: translateY(-5px) scale(1.02);
             box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        }
+        
+        .card.reading {
+            border: 3px solid var(--warning-color);
+            box-shadow: 0 20px 60px rgba(245, 158, 11, 0.3);
         }
         
         .card-header {
@@ -308,7 +380,6 @@
                 gap: 20px;
             }
             
-            /* 모바일에서 카드 패딩 대폭 축소 */
             .card-body {
                 padding: 15px;
             }
@@ -317,12 +388,10 @@
                 padding: 15px 18px;
             }
             
-            /* 섹션 내용 좌측 패딩 제거 */
             .section-content {
                 padding-left: 0;
             }
             
-            /* 문제점/제안 섹션 패딩 축소 */
             .problem-section,
             .suggestion-section {
                 padding: 10px;
@@ -331,6 +400,14 @@
             .card-section {
                 margin-bottom: 15px;
                 padding-bottom: 15px;
+            }
+            
+            .global-tts-controls {
+                flex-direction: column;
+            }
+            
+            .tts-status {
+                width: 100%;
             }
         }
         
@@ -368,20 +445,198 @@
             <div id="searchbox"></div>
         </div>
         
+        <!-- 전체 읽기 컨트롤 -->
+        <div class="global-tts-controls">
+            <!-- TTS 엔진 선택 -->
+            <select id="tts-engine" onchange="changeTTSEngine()" style="padding: 10px; border-radius: 10px; border: 1px solid #ddd; background: white;">
+                <option value="browser">브라우저 기본 음성</option>
+                <option value="clova" selected>네이버 CLOVA (추천)</option>
+            </select>
+            
+            <!-- CLOVA 화자 선택 -->
+            <select id="clova-speaker" onchange="changeClovaSpeaker()" style="padding: 10px; border-radius: 10px; border: 1px solid #ddd; background: white;">
+                <option value="nara_call">나라 (여성, 상담원, 최신)</option>
+                <option value="ndain">다인 (여성, 밝고 경쾌, 최신)</option>
+                <option value="njiyun">지윤 (여성, 차분한 낭독, 최신)</option>
+                <option value="nsujin">수진 (여성, 전문 아나운서, 최신)</option>
+                <option value="njinho">진호 (남성, 뉴스 앵커, 최신)</option>
+            </select>
+            
+            <button class="global-tts-btn" onclick="readAllCards()">
+                <span>📚</span>
+                <span class="btn-text">전체 카드 읽기</span>
+            </button>
+            <button class="global-tts-btn" onclick="pauseResumeReading()">
+                <span>⏸️</span>
+                <span>일시정지/재개</span>
+            </button>
+            <button class="global-tts-btn" onclick="stopAllReading()">
+                <span>⏹️</span>
+                <span>정지</span>
+            </button>
+            <div class="tts-status">
+                <span id="reading-status">대기중</span>
+                <div class="tts-progress">
+                    <div class="tts-progress-bar" id="progress-bar"></div>
+                </div>
+                <span id="reading-count">0/0</span>
+            </div>
+        </div>
+        
         <div id="hits"></div>
         <div id="pagination"></div>
     </div>
 
     <script>
-        // 폰트 크기 조절 - 더 세밀한 조절
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        
+        if (isMobile) {
+            console.log('모바일 환경 감지됨');
+        }
+        // TTS 전역 변수
+        let useClova = true;
+        let clovaSpeaker = 'nara_call';
+        let currentAudio = null;
+        let isReadingAll = false;
+        let isPaused = false;
+        let currentCardIndex = 0;
+        let allCardsData = [];
+        
+        // TTS 엔진 변경
+        function changeTTSEngine() {
+            const engine = document.getElementById('tts-engine').value;
+            const speakerSelect = document.getElementById('clova-speaker');
+            
+            useClova = (engine === 'clova');
+            
+            if (useClova) {
+                speakerSelect.style.display = 'inline-block';
+                console.log('네이버 CLOVA 음성 사용');
+            } else {
+                speakerSelect.style.display = 'none';
+                console.log('브라우저 기본 음성 사용');
+            }
+        }
+        
+        // CLOVA 화자 변경
+        function changeClovaSpeaker() {
+            clovaSpeaker = document.getElementById('clova-speaker').value;
+            console.log('CLOVA 화자 변경:', clovaSpeaker);
+        }
+        
+        // CLOVA TTS 함수
+        async function readWithClova(text) {
+            console.log('CLOVA TTS 호출:', clovaSpeaker);
+            
+            // 텍스트 전처리
+            let processedText = text
+                .replace(/([가-힣a-zA-Z0-9])([🚨💡📢📊])/g, '$1. $2')
+                .replace(/([가-힣])([A-Z])/g, '$1. $2')
+                .replace(/문제점입니다/g, '문제점입니다.')
+                .replace(/제안내용입니다/g, '제안내용입니다.')
+                .replace(/답변사항입니다/g, '답변사항입니다.')
+                .replace(/객관적 분석입니다/g, '객관적 분석입니다.')
+                .replace(/([.!?])([^\s])/g, '$1 $2');
+            
+            try {
+                const response = await fetch('/.netlify/functions/clova-tts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: processedText,
+                        speaker: clovaSpeaker
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`CLOVA API 오류: ${response.status}`);
+                }
+                
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                // 기존 Audio 객체 재사용 또는 새로 생성
+                if (!currentAudio) {
+                    currentAudio = new Audio();
+                    // 모바일을 위한 설정
+                    currentAudio.preload = 'auto';
+                    currentAudio.autoplay = true;
+                }
+                
+                // 이전 URL 정리
+                if (currentAudio.src && currentAudio.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(currentAudio.src);
+                }
+                
+                currentAudio.src = audioUrl;
+                currentAudio.volume = 1.0;
+                
+                return new Promise((resolve, reject) => {
+                    const playHandler = () => {
+                        console.log('재생 시작됨');
+                    };
+                    
+                    const endHandler = () => {
+                        currentAudio.removeEventListener('ended', endHandler);
+                        currentAudio.removeEventListener('error', errorHandler);
+                        // Audio 객체는 유지하고 URL만 정리
+                        URL.revokeObjectURL(audioUrl);
+                        resolve();
+                    };
+                    
+                    const errorHandler = (err) => {
+                        console.error('오디오 재생 실패:', err);
+                        currentAudio.removeEventListener('ended', endHandler);
+                        currentAudio.removeEventListener('error', errorHandler);
+                        resolve();
+                    };
+                    
+                    currentAudio.addEventListener('ended', endHandler);
+                    currentAudio.addEventListener('error', errorHandler);
+                    
+                    // 재생 시도
+                    const playPromise = currentAudio.play();
+                    
+                    if (playPromise !== undefined) {
+                        playPromise
+                            .then(playHandler)
+                            .catch((err) => {
+                                console.error('재생 실패, 재시도:', err);
+                                // 모바일에서 실패하면 한 번 더 시도
+                                setTimeout(() => {
+                                    currentAudio.play().catch(errorHandler);
+                                }, 100);
+                            });
+                    }
+                });
+                
+            } catch (error) {
+                console.error('CLOVA 오류, 브라우저 TTS로 전환:', error);
+                return readWithBrowserTTS(text);
+            }
+        }
+        
+        // 브라우저 TTS 함수
+        function readWithBrowserTTS(text) {
+            return new Promise((resolve) => {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ko-KR';
+                utterance.rate = 0.95;
+                utterance.onend = resolve;
+                utterance.onerror = resolve;
+                window.speechSynthesis.speak(utterance);
+            });
+        }
+        
+        // 폰트 크기 조절
         let currentSize = 16;
         function changeFontSize(delta) {
             currentSize += delta;
             if (currentSize < 12) currentSize = 12;
             if (currentSize > 26) currentSize = 26;
             document.documentElement.style.setProperty('--text-size', currentSize + 'px');
-            
-            // 변경 사항을 로컬 스토리지에 저장
             localStorage.setItem('fontSize', currentSize);
         }
 
@@ -392,6 +647,192 @@
                 currentSize = parseInt(savedSize);
                 document.documentElement.style.setProperty('--text-size', currentSize + 'px');
             }
+        });
+        
+        // 전체 카드 읽기
+        function readAllCards() {
+            const cards = document.querySelectorAll('.card');
+            if (cards.length === 0) {
+                alert('읽을 카드가 없습니다.');
+                return;
+            }
+            
+            // 기존 읽기 중지
+            stopAllReading();
+            
+            // 카드 데이터 준비
+            allCardsData = [];
+            cards.forEach((card, index) => {
+                const cardNumber = card.querySelector('.card-number')?.textContent || `카드 ${index + 1}`;
+                const category = card.querySelector('.card-category')?.textContent || '';
+                const location = card.querySelector('.card-location')?.textContent.replace('📍 ', '') || '';
+                const title = card.querySelector('.card-title')?.textContent || '';
+                
+                // 각 섹션 텍스트
+                let problem = card.querySelector('.problem-section .section-content')?.textContent || '';
+                let suggestion = card.querySelector('.suggestion-section .section-content')?.textContent || '';
+                let response = card.querySelector('.card-section .section-content')?.textContent || '';
+                let analysis = Array.from(card.querySelectorAll('.card-section')).find(el => 
+                    el.querySelector('.section-label')?.textContent.includes('객관적 분석')
+                )?.querySelector('.section-content')?.textContent || '';
+                
+                // 마침표 확인 및 추가
+                if (problem && !problem.trim().endsWith('.')) problem += '.';
+                if (suggestion && !suggestion.trim().endsWith('.')) suggestion += '.';
+                if (response && !response.trim().endsWith('.')) response += '.';
+                if (analysis && !analysis.trim().endsWith('.')) analysis += '.';
+                
+                // 텍스트 구성
+                let fullText = `${cardNumber}번 카드. ${location} 지역. ${category} 분야. `;
+                fullText += `제목은 ${title}입니다. `;
+                
+                if (problem) fullText += `문제점입니다. ${problem} `;
+                if (suggestion) fullText += `제안내용입니다. ${suggestion} `;
+                if (response) fullText += `답변사항입니다. ${response} `;
+                if (analysis) fullText += `객관적 분석입니다. ${analysis} `;
+                
+                fullText += '다음 카드로 넘어갑니다. ';
+                
+                allCardsData.push({
+                    element: card,
+                    text: fullText,
+                    number: cardNumber
+                });
+            });
+            
+            // 읽기 시작
+            isReadingAll = true;
+            isPaused = false;
+            currentCardIndex = 0;
+            
+            // UI 업데이트
+            document.querySelector('.global-tts-btn .btn-text').textContent = '읽기 중...';
+            document.querySelector('.global-tts-btn').classList.add('playing');
+            updateReadingStatus();
+            
+            // 첫 번째 카드 읽기 시작
+            readNextCard();
+        }
+        
+        // 다음 카드 읽기
+        async function readNextCard() {
+            if (!isReadingAll || currentCardIndex >= allCardsData.length) {
+                finishReading();
+                return;
+            }
+            
+            const cardData = allCardsData[currentCardIndex];
+            
+            document.querySelectorAll('.card').forEach(c => c.classList.remove('reading'));
+            cardData.element.classList.add('reading');
+            cardData.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            try {
+                if (useClova) {
+                    await readWithClova(cardData.text);
+                } else {
+                    await readWithBrowserTTS(cardData.text);
+                }
+                
+                if (!isPaused && isReadingAll) {
+                    currentCardIndex++;
+                    updateReadingStatus();
+                    setTimeout(() => readNextCard(), 500);
+                }
+            } catch (error) {
+                console.error('TTS 오류:', error);
+                if (isReadingAll) {
+                    currentCardIndex++;
+                    setTimeout(() => readNextCard(), 100);
+                }
+            }
+        }
+        
+        // 일시정지/재개
+        function pauseResumeReading() {
+            if (!isReadingAll) return;
+            
+            if (isPaused) {
+                isPaused = false;
+                
+                if (useClova && currentAudio) {
+                    currentAudio.play();
+                } else {
+                    window.speechSynthesis.resume();
+                }
+                
+                console.log('재개됨');
+            } else {
+                isPaused = true;
+                
+                if (useClova && currentAudio) {
+                    currentAudio.pause();
+                } else {
+                    window.speechSynthesis.pause();
+                }
+                
+                console.log('일시정지됨');
+            }
+        }
+        
+        // 전체 정지
+        function stopAllReading() {
+            isReadingAll = false;
+            isPaused = false;
+            currentCardIndex = 0;
+            
+            // CLOVA 오디오 정지
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+                // 모바일을 위해 Audio 객체는 유지
+                // currentAudio = null; <- 이 줄 제거
+            }
+            
+            // 브라우저 TTS 정지
+            window.speechSynthesis.cancel();
+            
+            // UI 리셋
+            document.querySelectorAll('.card').forEach(c => c.classList.remove('reading'));
+            const btnText = document.querySelector('.global-tts-btn .btn-text');
+            if (btnText) btnText.textContent = '전체 카드 읽기';
+            const playingBtn = document.querySelector('.global-tts-btn.playing');
+            if (playingBtn) playingBtn.classList.remove('playing');
+            updateReadingStatus();
+        }
+        
+        // 읽기 완료
+        function finishReading() {
+            isReadingAll = false;
+            document.querySelectorAll('.card').forEach(c => c.classList.remove('reading'));
+            document.querySelector('.global-tts-btn .btn-text').textContent = '전체 카드 읽기';
+            document.querySelector('.global-tts-btn').classList.remove('playing');
+            document.getElementById('reading-status').textContent = '읽기 완료';
+        }
+        
+        // 상태 업데이트
+        function updateReadingStatus() {
+            const status = document.getElementById('reading-status');
+            const count = document.getElementById('reading-count');
+            const progressBar = document.getElementById('progress-bar');
+            
+            if (isReadingAll) {
+                status.textContent = `${allCardsData[currentCardIndex]?.number || ''} 읽는 중...`;
+                count.textContent = `${currentCardIndex + 1}/${allCardsData.length}`;
+                progressBar.style.width = `${((currentCardIndex + 1) / allCardsData.length) * 100}%`;
+            } else {
+                status.textContent = '대기중';
+                count.textContent = '0/0';
+                progressBar.style.width = '0%';
+            }
+        }
+        
+        // 페이지 떠날 때 음성 정지
+        window.addEventListener('beforeunload', () => {
+            if (currentAudio) {
+                currentAudio.pause();
+            }
+            window.speechSynthesis.cancel();
         });
         
         // Algolia 설정
@@ -484,7 +925,13 @@
         ]);
 
         search.start();
+        
+        // 검색 결과 변경 감지
+        search.on('render', () => {
+            if (isReadingAll) {
+                stopAllReading();
+            }
+        });
     </script>
 </body>
 </html>
-
